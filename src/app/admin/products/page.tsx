@@ -13,8 +13,28 @@ import {
   ArrowLeft,
   Star,
   ExternalLink,
-  Save
+  Save,
+  GripVertical,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react'
+import {
+  DndContext, 
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface Product {
   id: string
@@ -39,6 +59,202 @@ interface Product {
   }
 }
 
+interface SortableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
+  product: Product
+  selected: boolean
+  onToggleSelect: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  isFirst: boolean
+  isLast: boolean
+  dragEnabled: boolean
+  // Pass other handlers
+  resolveImage: (p: any) => string
+  toggleFeatured: (id: string, featured: boolean) => void
+  toggleInStock: (id: string, inStock: boolean) => void
+  deleteProduct: (id: string) => void
+}
+
+function SortableRow({
+  product,
+  selected,
+  onToggleSelect,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+  dragEnabled,
+  resolveImage,
+  toggleFeatured,
+  toggleInStock,
+  deleteProduct,
+  ...props
+}: SortableRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: product.id, disabled: !dragEnabled });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 'auto',
+    position: isDragging ? 'relative' as const : 'static' as const,
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      {...props}
+      className={`${props.className} ${isDragging ? 'bg-blue-50 shadow-lg' : 'hover:bg-gray-50'}`}
+    >
+      <td className="px-4 py-4">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+        />
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        {dragEnabled ? (
+          <div className="flex items-center gap-2">
+            <button
+              className="cursor-grab text-gray-400 hover:text-gray-600 active:cursor-grabbing p-1"
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-5 w-5" />
+            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={onMoveUp}
+                disabled={isFirst}
+                className={`text-gray-400 hover:text-blue-600 ${isFirst ? 'opacity-30 cursor-not-allowed' : ''}`}
+              >
+                <ChevronUp className="h-4 w-4" />
+              </button>
+              <button
+                onClick={onMoveDown}
+                disabled={isLast}
+                className={`text-gray-400 hover:text-blue-600 ${isLast ? 'opacity-30 cursor-not-allowed' : ''}`}
+              >
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
+            <span className="text-xs text-gray-400 ml-1">{product.sortOrder}</span>
+          </div>
+        ) : (
+          <span className="text-sm text-gray-500">{product.sortOrder}</span>
+        )}
+      </td>
+      <td className="px-6 py-4">
+        <div className="flex items-center">
+          <div className="flex-shrink-0 h-12 w-12">
+            <div className="h-12 w-12 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
+              <img
+                src={resolveImage(product)}
+                alt={product.name}
+                className="h-12 w-12 object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://placehold.co/96x96?text=No+Image' }}
+              />
+            </div>
+          </div>
+          <div className="ml-4">
+            <div className="flex items-center">
+              <div className="text-sm font-medium text-gray-900">
+                {product.name}
+              </div>
+              {product.featured && (
+                <Star className="h-4 w-4 text-yellow-400 ml-2" />
+              )}
+            </div>
+            <div className="text-sm text-gray-500 truncate max-w-xs">
+              {product.description}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-900">¥{product.price}</div>
+        {product.originalPrice && (
+          <div className="text-sm text-gray-500 line-through">
+            ¥{product.originalPrice}
+          </div>
+        )}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+            product.inStock
+              ? 'bg-green-100 text-green-800'
+              : 'bg-red-100 text-red-800'
+          }`}>
+            {product.inStock ? '已启用' : '已禁用'}
+          </span>
+          <label className="inline-flex items-center cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="peer sr-only"
+              checked={product.inStock}
+              onChange={() => toggleInStock(product.id, product.inStock)}
+            />
+            <span className="w-11 h-6 bg-gray-200 rounded-full peer-checked:bg-blue-600 transition-colors relative">
+              <span className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-all peer-checked:left-6" />
+            </span>
+            <span className="ml-2 text-xs text-gray-600">启用</span>
+          </label>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {new Date(product.createdAt).toLocaleDateString()}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+        <div className="flex items-center justify-end space-x-2">
+          <button
+            onClick={() => toggleFeatured(product.id, product.featured)}
+            className={`p-2 rounded-lg transition-colors ${
+              product.featured
+                ? 'text-yellow-600 hover:bg-yellow-50'
+                : 'text-gray-400 hover:bg-gray-50'
+            }`}
+            title={product.featured ? '取消推荐' : '设为推荐'}
+          >
+            <Star className="h-4 w-4" />
+          </button>
+          <a
+            href={product.amazonUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            title="查看亚马逊链接"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </a>
+          <Link
+            href={`/admin/products/${product.id}/edit`}
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            title="编辑"
+          >
+            <Edit className="h-4 w-4" />
+          </Link>
+          <button
+            onClick={() => deleteProduct(product.id)}
+            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="删除"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 export default function ProductsManagement() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,6 +263,41 @@ export default function ProductsManagement() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [hasOrderChanges, setHasOrderChanges] = useState(false)
   const [savingOrder, setSavingOrder] = useState(false)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (active.id !== over?.id) {
+      setProducts((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over!.id);
+        const newItems = arrayMove(items, oldIndex, newIndex);
+        return newItems.map((item, index) => ({ ...item, sortOrder: index }));
+      });
+      setHasOrderChanges(true);
+    }
+  };
+
+  const moveProduct = (index: number, direction: 'up' | 'down') => {
+    setProducts(items => {
+      let newItems = [...items];
+      if (direction === 'up' && index > 0) {
+        newItems = arrayMove(newItems, index, index - 1);
+      } else if (direction === 'down' && index < items.length - 1) {
+        newItems = arrayMove(newItems, index, index + 1);
+      } else {
+        return items;
+      }
+      return newItems.map((item, idx) => ({ ...item, sortOrder: idx }));
+    });
+    setHasOrderChanges(true);
+  };
 
   useEffect(() => {
     fetchProducts()
@@ -67,16 +318,6 @@ export default function ProductsManagement() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleSortChange = (id: string, newOrder: string) => {
-    const order = parseInt(newOrder)
-    if (isNaN(order)) return
-
-    setProducts(prev => prev.map(p => 
-      p.id === id ? { ...p, sortOrder: order } : p
-    ))
-    setHasOrderChanges(true)
   }
 
   const saveOrder = async () => {
@@ -372,126 +613,36 @@ export default function ProductsManagement() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredProducts.map((product) => (
-                    <tr key={product.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-4">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.includes(product.id)}
-                          onChange={() => toggleSelect(product.id)}
+                <DndContext 
+                  sensors={sensors} 
+                  collisionDetection={closestCenter} 
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext 
+                    items={filteredProducts.map(p => p.id)} 
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <tbody className="divide-y divide-gray-200">
+                      {filteredProducts.map((product, index) => (
+                        <SortableRow
+                          key={product.id}
+                          product={product}
+                          selected={selectedIds.includes(product.id)}
+                          onToggleSelect={() => toggleSelect(product.id)}
+                          onMoveUp={() => moveProduct(index, 'up')}
+                          onMoveDown={() => moveProduct(index, 'down')}
+                          isFirst={index === 0}
+                          isLast={index === filteredProducts.length - 1}
+                          dragEnabled={searchTerm === '' && filterFeatured === null}
+                          resolveImage={resolveImage}
+                          toggleFeatured={toggleFeatured}
+                          toggleInStock={toggleInStock}
+                          deleteProduct={deleteProduct}
                         />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <input
-                          type="number"
-                          value={product.sortOrder ?? 0}
-                          onChange={(e) => handleSortChange(product.id, e.target.value)}
-                          className="w-20 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 h-12 w-12">
-                            <div className="h-12 w-12 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
-                              <img
-                                src={resolveImage(product)}
-                                alt={product.name}
-                                className="h-12 w-12 object-cover"
-                                onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://placehold.co/96x96?text=No+Image' }}
-                              />
-                            </div>
-                          </div>
-                          <div className="ml-4">
-                            <div className="flex items-center">
-                              <div className="text-sm font-medium text-gray-900">
-                                {product.name}
-                              </div>
-                              {product.featured && (
-                                <Star className="h-4 w-4 text-yellow-400 ml-2" />
-                              )}
-                            </div>
-                            <div className="text-sm text-gray-500 truncate max-w-xs">
-                              {product.description}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">¥{product.price}</div>
-                        {product.originalPrice && (
-                          <div className="text-sm text-gray-500 line-through">
-                            ¥{product.originalPrice}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-3">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            product.inStock
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {product.inStock ? '已启用' : '已禁用'}
-                          </span>
-                          <label className="inline-flex items-center cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              className="peer sr-only"
-                              checked={product.inStock}
-                              onChange={() => toggleInStock(product.id, product.inStock)}
-                            />
-                            <span className="w-11 h-6 bg-gray-200 rounded-full peer-checked:bg-blue-600 transition-colors relative">
-                              <span className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-all peer-checked:left-6" />
-                            </span>
-                            <span className="ml-2 text-xs text-gray-600">启用</span>
-                          </label>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(product.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => toggleFeatured(product.id, product.featured)}
-                            className={`p-2 rounded-lg transition-colors ${
-                              product.featured
-                                ? 'text-yellow-600 hover:bg-yellow-50'
-                                : 'text-gray-400 hover:bg-gray-50'
-                            }`}
-                            title={product.featured ? '取消推荐' : '设为推荐'}
-                          >
-                            <Star className="h-4 w-4" />
-                          </button>
-                          <a
-                            href={product.amazonUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="查看亚马逊链接"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                          <Link
-                            href={`/admin/products/${product.id}/edit`}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="编辑"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Link>
-                          <button
-                            onClick={() => deleteProduct(product.id)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="删除"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
+                      ))}
+                    </tbody>
+                  </SortableContext>
+                </DndContext>
               </table>
               <div className="flex items-center justify-between px-6 py-3 border-t bg-gray-50">
                 <div className="text-sm text-gray-600">已选中 {selectedIds.length} 个产品</div>
