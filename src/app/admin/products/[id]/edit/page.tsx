@@ -997,6 +997,133 @@ export default function EditProduct() {
             </div>
           )}
 
+          {/* 产品图片 */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">产品图片</h2>
+              <div className="flex items-center space-x-3">
+                <label className="inline-flex items-center px-3 py-2 text-sm bg-gray-100 border rounded-lg cursor-pointer hover:bg-gray-200">
+                  <Upload className="h-4 w-4 mr-2" />
+                  {bulkUploading ? '批量上传中…' : '批量上传'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = e.target.files
+                      if (files) handleBulkUpload(files)
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={addImageField}
+                  className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  添加图片
+                </button>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-500 mb-2">提示：按住图片行拖拽进行排序</p>
+
+            <div className="space-y-4">
+              {form.images.map((image, index) => (
+                <div
+                  key={index}
+                  className="flex items-center space-x-3"
+                  draggable
+                  onDragStart={() => onDragStartImage(index)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => onDropImage(index)}
+                >
+                  <div className="flex-1">
+                    <input
+                      type="url"
+                      value={image}
+                      onChange={(e) => updateImageField(index, e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="产品图片URL地址"
+                    />
+                  </div>
+                  <div className="w-16 h-16 rounded-lg overflow-hidden border bg-gray-50 flex items-center justify-center">
+                    {image ? (
+                      <img
+                        src={image.startsWith('http') ? image : (image.startsWith('/') ? image : `/${image}`)}
+                        alt="预览"
+                        className="w-full h-full object-cover cursor-zoom-in"
+                        onClick={() => setPreviewImage(image.startsWith('http') ? image : (image.startsWith('/') ? image : `/${image}`))}
+                      />
+                    ) : (
+                      <span className="text-xs text-gray-400">无预览</span>
+                    )}
+                  </div>
+                  {image ? (
+                    <a
+                      href={image.startsWith('http') ? image : (image.startsWith('/') ? image : `/${image}`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gray-500 hover:text-blue-600"
+                      title="在新窗口打开图片"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  ) : null}
+                  <label className="inline-flex items-center px-3 py-2 text-sm bg-gray-100 border rounded-lg cursor-pointer hover:bg-gray-200">
+                    <Upload className="h-4 w-4 mr-2" />
+                    {uploadingIndex === index ? '上传中…' : '本地上传'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) handleUpload(index, f)
+                      }}
+                    />
+                  </label>
+                  {form.images.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeImageField(index)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 产品要点 (5点) */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border">
+            <h2 className="text-lg font-semibold text-gray-900 mb-6">产品要点 (5点描述)</h2>
+            
+            <div className="space-y-4">
+              {form.bulletPoints.map((point, index) => (
+                <div key={index}>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    要点 {index + 1} <span className="text-xs text-gray-500">(最多500字符)</span>
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={500}
+                    value={point}
+                    onChange={(e) => updateBulletPoint(index, e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder={`输入第${index + 1}个产品要点`}
+                  />
+                  <div className="text-xs text-gray-500 mt-1">
+                    {point.length}/500 字符
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* 产品描述 */}
           <div className="bg-white p-6 rounded-xl shadow-sm border">
             <h2 className="text-lg font-semibold text-gray-900 mb-6">产品描述</h2>
