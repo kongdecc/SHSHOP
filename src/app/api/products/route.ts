@@ -23,9 +23,10 @@ export async function GET(request: NextRequest) {
       include: {
         category: true,
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: [
+        { sortOrder: 'asc' },
+        { createdAt: 'desc' },
+      ],
     }
 
     if (limit) {

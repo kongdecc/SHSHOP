@@ -51,6 +51,7 @@ model Product {
   // 新增：按钮显示控制
   showBuyOnAmazon   Boolean  @default(true)
   showAddToCart     Boolean  @default(true)
+  sortOrder         Int      @default(0)
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

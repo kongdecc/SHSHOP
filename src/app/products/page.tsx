@@ -10,7 +10,10 @@ export default async function ProductsPage() {
   try {
     products = await db.product.findMany({
       where: { active: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { sortOrder: 'asc' },
+        { createdAt: 'desc' },
+      ],
     })
   } catch (e) {
     console.error('Failed to load products:', e)

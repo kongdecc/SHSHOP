@@ -12,7 +12,8 @@ import {
   Filter,
   ArrowLeft,
   Star,
-  ExternalLink
+  ExternalLink,
+  Save
 } from 'lucide-react'
 
 interface Product {
@@ -30,6 +31,7 @@ interface Product {
   categoryId?: string
   featured: boolean
   inStock: boolean
+  sortOrder: number
   createdAt: string
   category?: {
     id: string
@@ -43,6 +45,8 @@ export default function ProductsManagement() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterFeatured, setFilterFeatured] = useState<boolean | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [hasOrderChanges, setHasOrderChanges] = useState(false)
+  const [savingOrder, setSavingOrder] = useState(false)
 
   useEffect(() => {
     fetchProducts()
@@ -56,6 +60,7 @@ export default function ProductsManagement() {
       }
       const data = await response.json()
       setProducts(Array.isArray(data) ? data : [])
+      setHasOrderChanges(false)
     } catch (error) {
       console.error('获取产品失败:', error)
       setProducts([])
@@ -63,6 +68,43 @@ export default function ProductsManagement() {
       setLoading(false)
     }
   }
+
+  const handleSortChange = (id: string, newOrder: string) => {
+    const order = parseInt(newOrder)
+    if (isNaN(order)) return
+
+    setProducts(prev => prev.map(p => 
+      p.id === id ? { ...p, sortOrder: order } : p
+    ))
+    setHasOrderChanges(true)
+  }
+
+  const saveOrder = async () => {
+    if (!hasOrderChanges) return
+    setSavingOrder(true)
+    try {
+      const updates = products.map(p => ({ id: p.id, sortOrder: p.sortOrder }))
+      const response = await fetch('/api/products/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ products: updates })
+      })
+
+      if (response.ok) {
+        setHasOrderChanges(false)
+        alert('排序已保存')
+        fetchProducts() // Refresh to ensure correct order
+      } else {
+        throw new Error('Failed to save order')
+      }
+    } catch (error) {
+      console.error('保存排序失败:', error)
+      alert('保存排序失败')
+    } finally {
+      setSavingOrder(false)
+    }
+  }
+
 
   const resolveImage = (p: any): string => {
     const main = (p?.mainImage ?? '').trim()
@@ -227,13 +269,29 @@ export default function ProductsManagement() {
             <h1 className="text-3xl font-bold text-gray-900">产品管理</h1>
             <p className="text-gray-600 mt-2">管理您的产品库存和信息</p>
           </div>
-          <Link
-            href="/admin/products/new"
-            className="mt-4 sm:mt-0 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors inline-flex items-center"
-          >
-            <Plus className="h-5 w-5 mr-2" />
-            添加产品
-          </Link>
+          <div className="flex items-center gap-3 mt-4 sm:mt-0">
+            {hasOrderChanges && (
+              <button
+                onClick={saveOrder}
+                disabled={savingOrder}
+                className="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors inline-flex items-center disabled:opacity-50"
+              >
+                {savingOrder ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                ) : (
+                  <Save className="h-5 w-5 mr-2" />
+                )}
+                保存排序
+              </button>
+            )}
+            <Link
+              href="/admin/products/new"
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors inline-flex items-center"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              添加产品
+            </Link>
+          </div>
         </div>
 
         {/* 搜索和筛选 */}
@@ -295,6 +353,9 @@ export default function ProductsManagement() {
                       />
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      排序
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       产品信息
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -319,6 +380,14 @@ export default function ProductsManagement() {
                           type="checkbox"
                           checked={selectedIds.includes(product.id)}
                           onChange={() => toggleSelect(product.id)}
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="number"
+                          value={product.sortOrder ?? 0}
+                          onChange={(e) => handleSortChange(product.id, e.target.value)}
+                          className="w-20 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </td>
                       <td className="px-6 py-4">
