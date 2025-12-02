@@ -91,7 +91,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const googleScripts = extractScripts((settings as any).analyticsGoogleHtml || '')
   return (
     <html lang="en">
-      {/* SSR 注入到 <head>，确保源码检测可见 */}
       {headScripts.concat(googleScripts).map((s, idx) => (
         s.src ? (
           <Script key={`a-head-${idx}`} src={s.src} strategy="beforeInteractive" />
