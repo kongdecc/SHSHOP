@@ -191,9 +191,4 @@ export default async function ProductsPage({ searchParams }: { searchParams?: Pr
     </Layout>
   )
 }
-  // 类别列表
-  let categories: Array<{ id: string; name: string }> = []
-  try {
-    const rows = await db.category.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } })
-    categories = rows
-  } catch {}
+
