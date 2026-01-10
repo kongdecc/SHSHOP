@@ -28,6 +28,7 @@ interface Product {
   bulletPoints: string[]
   amazonUrl: string
   categoryId?: string
+  brandId?: string
   featured: boolean
   inStock: boolean
   brand?: string
@@ -48,6 +49,7 @@ interface ProductForm {
   bulletPoints: string[]
   amazonUrl: string
   categoryId: string
+  brandId: string
   featured: boolean
   inStock: boolean
   showBuyOnAmazon: boolean
@@ -65,6 +67,7 @@ interface VariantGroup { name: string; options: string[] }
 
 // 新增：分类类型
 interface Category { id: string; name: string; slug: string }
+interface Brand { id: string; name: string; slug: string }
 
 interface Review {
   id: string
@@ -142,9 +145,10 @@ export default function EditProduct() {
     price: '',
     originalPrice: '',
     images: [''],
-    bulletPoints: ['', '', '', '', ''],
+    bulletPoints: ['', '', '', '', '', '', '', ''],
     amazonUrl: '',
     categoryId: '',
+    brandId: '',
     featured: false,
     inStock: true,
     showBuyOnAmazon: true,
@@ -160,6 +164,7 @@ export default function EditProduct() {
   // 新增：分类状态
   const [categories, setCategories] = useState<Category[]>([])
   const [catLoading, setCatLoading] = useState(true)
+  const [brands, setBrands] = useState<Brand[]>([])
   const [urlError, setUrlError] = useState<string>('')
   // 上传状态：按索引标记（简化处理）
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
@@ -332,22 +337,29 @@ export default function EditProduct() {
     fetchProduct()
   }, [productId])
 
-  // 新增：加载分类列表
+  // 新增：加载分类和品牌列表
   useEffect(() => {
-    const loadCategories = async () => {
+    const loadData = async () => {
       try {
-        const res = await fetch('/api/categories', { cache: 'no-store' })
-        if (res.ok) {
-          const data = await res.json()
+        const [catRes, brandRes] = await Promise.all([
+          fetch('/api/categories', { cache: 'no-store' }),
+          fetch('/api/brands', { cache: 'no-store' })
+        ])
+        if (catRes.ok) {
+          const data = await catRes.json()
           setCategories(Array.isArray(data) ? data : [])
         }
+        if (brandRes.ok) {
+          const data = await brandRes.json()
+          setBrands(Array.isArray(data) ? data : [])
+        }
       } catch (e) {
-        console.error('加载分类失败:', e)
+        console.error('加载基础数据失败:', e)
       } finally {
         setCatLoading(false)
       }
     }
-    loadCategories()
+    loadData()
   }, [])
 
   const fetchProduct = async () => {
@@ -373,10 +385,11 @@ export default function EditProduct() {
           originalPrice: data.originalPrice?.toString() || '',
           images: Array.isArray(data.images) && data.images.length > 0 ? data.images : [''],
           bulletPoints: Array.isArray(data.bulletPoints)
-            ? Array.from({ length: 5 }, (_, i) => (data.bulletPoints[i] ?? ''))
-            : ['', '', '', '', ''],
+            ? Array.from({ length: 8 }, (_, i) => (data.bulletPoints[i] ?? ''))
+            : ['', '', '', '', '', '', '', ''],
           amazonUrl: data.amazonUrl || '',
           categoryId: data.categoryId || '',
+          brandId: data.brandId || data.brandRelation?.id || '',
           featured: data.featured || false,
           inStock: data.inStock !== false,
           showBuyOnAmazon: data.showBuyOnAmazon !== false,
@@ -583,7 +596,7 @@ export default function EditProduct() {
           price: parseFloat(form.price),
           originalPrice: form.originalPrice ? parseFloat(form.originalPrice) : null,
           images: (Array.isArray(form.images) ? form.images : ['']).filter(img => img.trim() !== ''),
-          bulletPoints: Array.from({ length: 5 }, (_, i) => ((Array.isArray(form.bulletPoints) ? form.bulletPoints[i] : '') ?? '').trim()),
+          bulletPoints: Array.from({ length: 8 }, (_, i) => ((Array.isArray(form.bulletPoints) ? form.bulletPoints[i] : '') ?? '').trim()),
           brand: (form.brand ?? '').trim() || null,
           upc: (form.upc ?? '').trim() || null,
           publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : null,
@@ -727,19 +740,6 @@ export default function EditProduct() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  品牌名
-                </label>
-                <input
-                  type="text"
-                  value={form.brand || ''}
-                  onChange={(e) => setForm(prev => ({ ...prev, brand: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="例如：Apple、Sony、Nike"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
                   UPC（可选）
                 </label>
                 <input
@@ -782,6 +782,36 @@ export default function EditProduct() {
                 </select>
                 {!catLoading && categories.length === 0 && (
                   <p className="text-xs text-red-600 mt-1">暂无分类，请先执行重置数据或在数据库中创建分类。</p>
+                )}
+              </div>
+
+              {/* 新增：品牌选择 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  所属品牌 (可选)
+                </label>
+                <select
+                  value={form.brandId}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    const selected = brands.find(b => b.id === val)
+                    setForm(prev => ({ 
+                      ...prev, 
+                      brandId: val,
+                      brand: selected ? selected.name : ''
+                    }))
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">-- 不选择品牌 --</option>
+                  {brands.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+                {!form.brandId && form.brand && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    当前保留的旧品牌名称：{form.brand}。请在上方选择对应品牌以关联（建议）。
+                  </p>
                 )}
               </div>
 
@@ -1335,15 +1365,15 @@ export default function EditProduct() {
             </div>
           </div>
 
-          {/* 产品要点 (5点) */}
+          {/* 产品要点 (8点) */}
           <div className="bg-white p-6 rounded-xl shadow-sm border">
-            <h2 className="text-lg font-semibold text-gray-900 mb-6">产品要点 (5点描述)</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-6">产品要点 (8点描述)</h2>
             
             <div className="space-y-4">
               {form.bulletPoints.map((point, index) => (
                 <div key={index}>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    要点 {index + 1} <span className="text-xs text-gray-500">(最多500字符)</span>
+                    要点 {index + 1} {index >= 5 && <span className="text-gray-400 font-normal">(可选)</span>} <span className="text-xs text-gray-500">(最多500字符)</span>
                   </label>
                   <input
                     type="text"
@@ -1351,7 +1381,7 @@ export default function EditProduct() {
                     value={point}
                     onChange={(e) => updateBulletPoint(index, e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={`输入第${index + 1}个产品要点`}
+                    placeholder={index >= 5 ? `(可选) 输入第${index + 1}个产品要点` : `输入第${index + 1}个产品要点`}
                   />
                   <div className="text-xs text-gray-500 mt-1">
                     {point.length}/500 字符

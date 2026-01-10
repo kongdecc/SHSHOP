@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useUnsavedChangesPrompt from '../../../../hooks/useUnsavedChangesPrompt'
@@ -29,6 +29,7 @@ interface ProductForm {
   inStock: boolean
   showBuyOnAmazon: boolean
   showAddToCart: boolean
+  brandId: string
   brand?: string
   upc?: string
   publishedAt?: string
@@ -42,6 +43,7 @@ interface VariantGroup { name: string; options: string[] }
 
 // 分类类型（与 /api/categories 一致）
 interface Category { id: string; name: string; slug: string }
+interface Brand { id: string; name: string; slug: string }
 
 // 链接校验（仅校验为有效 http/https URL，不自动改写）
 function isValidAmazonUrl(url: string): boolean {
@@ -100,11 +102,12 @@ export default function NewProduct() {
     price: '',
     originalPrice: '',
     images: [''],
-    bulletPoints: ['', '', '', '', ''],
+    bulletPoints: ['', '', '', '', '', '', '', ''],
     amazonUrl: '',
     categoryId: '',
     featured: false,
     inStock: true,
+    brandId: '',
     brand: '',
     upc: '',
     publishedAt: '',
@@ -118,6 +121,7 @@ export default function NewProduct() {
   // 新增：分类状态
   const [categories, setCategories] = useState<Category[]>([])
   const [catLoading, setCatLoading] = useState(true)
+  const [brands, setBrands] = useState<Brand[]>([])
   const [urlError, setUrlError] = useState<string>('')
   // 上传状态：按索引标记（简化处理）
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
@@ -126,6 +130,55 @@ export default function NewProduct() {
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
   useUnsavedChangesPrompt(hasChanges)
+
+  // 描述图片上传
+  const descTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const [descUploading, setDescUploading] = useState(false)
+
+  const handleDescImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setDescUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      const url = data?.url
+      
+      if (typeof url === 'string' && url.length > 0) {
+        const finalUrl = url.startsWith('http') ? url : `${window.location.origin}${url}`
+        const imgTag = `<img src="${finalUrl}" alt="Description Image" style="max-width: 100%; height: auto;" />`
+        
+        setForm(prev => {
+          const textarea = descTextareaRef.current
+          let newDesc = prev.description
+          
+          if (textarea) {
+            const start = textarea.selectionStart
+            const end = textarea.selectionEnd
+            newDesc = prev.description.substring(0, start) + imgTag + prev.description.substring(end)
+          } else {
+            newDesc = prev.description + imgTag
+          }
+          
+          return { ...prev, description: newDesc }
+        })
+        setHasChanges(true)
+      } else {
+        alert('上传成功，但未返回有效URL')
+      }
+    } catch (e) {
+      console.error('上传描述图片失败:', e)
+      alert('上传图片失败，请重试')
+    } finally {
+      setDescUploading(false)
+      // 清空 input 以允许重复上传同一文件
+      e.target.value = ''
+    }
+  }
 
   const handleUpload = async (index: number, file: File) => {
     setUploadingIndex(index)
@@ -196,22 +249,34 @@ export default function NewProduct() {
     setHasChanges(true)
   }
 
-  // 新增：加载分类列表
+  // 新增：加载分类和品牌列表
   useEffect(() => {
-    const loadCategories = async () => {
+    const loadData = async () => {
       try {
-        const res = await fetch('/api/categories', { cache: 'no-store' })
-        if (res.ok) {
-          const data = await res.json()
+        const [catRes, brandRes] = await Promise.all([
+          fetch('/api/categories', { cache: 'no-store' }),
+          fetch('/api/brands', { cache: 'no-store' })
+        ])
+        
+        if (catRes.ok) {
+          const data = await catRes.json()
           setCategories(Array.isArray(data) ? data : [])
+          if (data.length > 0) {
+            setForm(prev => ({ ...prev, categoryId: data[0].id }))
+          }
+        }
+        
+        if (brandRes.ok) {
+          const data = await brandRes.json()
+          setBrands(Array.isArray(data) ? data : [])
         }
       } catch (e) {
-        console.error('加载分类失败:', e)
+        console.error('加载基础数据失败:', e)
       } finally {
         setCatLoading(false)
       }
     }
-    loadCategories()
+    loadData()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -238,6 +303,7 @@ export default function NewProduct() {
           originalPrice: form.originalPrice ? parseFloat(form.originalPrice) : null,
           images: form.images.filter(img => img.trim() !== ''),
           bulletPoints: Array.from({ length: 5 }, (_, i) => (form.bulletPoints[i] ?? '').trim()),
+          brandId: form.brandId || null,
           brand: (form.brand ?? '').trim() || null,
           upc: (form.upc ?? '').trim() || null,
           publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : null,
@@ -394,15 +460,26 @@ export default function NewProduct() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  品牌名
+                  所属品牌 (可选)
                 </label>
-                <input
-                  type="text"
-                  value={form.brand || ''}
-                  onChange={(e) => setForm(prev => ({ ...prev, brand: e.target.value }))}
+                <select
+                  value={form.brandId}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    const selected = brands.find(b => b.id === val)
+                    setForm(prev => ({ 
+                      ...prev, 
+                      brandId: val,
+                      brand: selected ? selected.name : ''
+                    }))
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="例如：Apple、Sony、Nike"
-                />
+                >
+                  <option value="">-- 不选择品牌 --</option>
+                  {brands.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -973,7 +1050,7 @@ export default function NewProduct() {
               {form.bulletPoints.map((point, index) => (
                 <div key={index}>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    要点 {index + 1} <span className="text-xs text-gray-500">(最多500字符)</span>
+                    要点 {index + 1} {index >= 5 && <span className="text-gray-400 font-normal">(可选)</span>} <span className="text-xs text-gray-500">(最多500字符)</span>
                   </label>
                   <input
                     type="text"
@@ -981,7 +1058,7 @@ export default function NewProduct() {
                     value={point}
                     onChange={(e) => updateBulletPoint(index, e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={`输入第${index + 1}个产品要点`}
+                    placeholder={index >= 5 ? `(可选) 输入第${index + 1}个产品要点` : `输入第${index + 1}个产品要点`}
                   />
                   <div className="text-xs text-gray-500 mt-1">
                     {point.length}/500 字符
@@ -996,10 +1073,24 @@ export default function NewProduct() {
             <h2 className="text-lg font-semibold text-gray-900 mb-6">产品描述</h2>
             
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                详细描述 * <span className="text-xs text-gray-500">(最多3000字符，支持HTML)</span>
-              </label>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  详细描述 * <span className="text-xs text-gray-500">(最多3000字符，支持HTML)</span>
+                </label>
+                <label className="cursor-pointer inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+                  <Upload className={`h-4 w-4 mr-2 ${descUploading ? 'animate-pulse' : ''}`} />
+                  {descUploading ? '上传中...' : '插入图片'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleDescImageUpload}
+                    disabled={descUploading}
+                  />
+                </label>
+              </div>
               <textarea
+                ref={descTextareaRef}
                 required
                 rows={12}
                 maxLength={3000}
